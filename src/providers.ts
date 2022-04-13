@@ -96,14 +96,15 @@ const signIn = async (connector: Providers) => {
      */
     const signature = await provider.getSigner().signMessage(message.prepareMessage());
 
+    const token = btoa(JSON.stringify({ message, ens, signature }));
+
     /**
      * Calls our sign_in endpoint to validate the message, if successful it will
      * save the message in the session and allow the user to store his text
      */
     fetch(`/api/sign_in`, {
         method: 'POST',
-        body: JSON.stringify({ message, ens, signature }),
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         credentials: 'include',
     }).then(async (res) => {
         if (res.status === 200) {

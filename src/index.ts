@@ -90,13 +90,28 @@ app.get('/api/me', async (req, res) => {
 
 app.post('/api/sign_in', async (req, res) => {
     try {
-        const { ens, signature } = req.body;
-        if (!req.body.message) {
-            res.status(422).json({ message: 'Expected signMessage object as body.' });
+        const authHeader = typeof req.headers['authorization'] === 'string'
+            ? req.headers['authorization']
+            : req.headers['authorization'][0];
+
+        const tokenParts = authHeader.split(' ');
+
+        if (tokenParts.length !== 2 || tokenParts[0] !== 'Bearer') {
+            throw new Error(ErrorTypes.INVALID_SIGNATURE);
+        }
+
+        const encToken = tokenParts[1];
+
+        const tokenVal = Buffer.from(encToken, 'base64').toString('utf-8');
+
+        const siwe = JSON.parse(tokenVal);
+
+        if (!siwe.message) {
+            res.status(422).json({ message: 'Expected signMessage to be in token.' });
             return;
         }
 
-        const message = new SiweMessage(req.body.message);
+        const message = new SiweMessage(siwe.message);
 
         const infuraProvider = new providers.JsonRpcProvider(
             {
@@ -114,7 +129,7 @@ app.post('/api/sign_in', async (req, res) => {
 
         await infuraProvider.ready;
 
-        const fields: SiweMessage = await message.validate(signature, infuraProvider);
+        const fields: SiweMessage = await message.validate(siwe.signature, infuraProvider);
 
         if (fields.nonce !== req.session.nonce) {
             res.status(422).json({
@@ -124,7 +139,6 @@ app.post('/api/sign_in', async (req, res) => {
         }
 
         req.session.siwe = fields;
-        req.session.ens = ens;
         req.session.nonce = null;
         req.session.cookie.expires = new Date(fields.expirationTime);
         req.session.save(() =>
@@ -132,8 +146,7 @@ app.post('/api/sign_in', async (req, res) => {
                 .status(200)
                 .json({
                     text: getText(req.session.siwe.address),
-                    address: req.session.siwe.address,
-                    ens: req.session.ens,
+                    address: req.session.siwe.address
                 })
                 .end(),
         );
